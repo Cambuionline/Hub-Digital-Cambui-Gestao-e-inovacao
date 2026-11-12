@@ -1,5 +1,6 @@
 'use client';
 import {useState} from 'react';
+import Link from 'next/link';
 import {GoogleAuthProvider,signInWithPopup,signInWithEmailAndPassword,sendEmailVerification,signOut} from 'firebase/auth';
 import {createFirebaseClient} from '@/lib/firebase';
 export default function Login(){
@@ -10,5 +11,5 @@ export default function Login(){
  const token=await result.user.getIdTokenResult(true);if(token.claims.admin===true){window.location.assign('/admin');return;}setMessage('Conta autenticada. O painel administrativo exige autorização específica.');
  }catch{setMessage('Não foi possível entrar. Verifique as credenciais e configurações.');}finally{setBusy(false)}
  }
- return <main style={{maxWidth:430,margin:'8vh auto',padding:24}}><h1>Acesso ao HUB</h1><p>A autorização administrativa é concedida separadamente.</p><form onSubmit={e=>{e.preventDefault();void login('password')}}><label htmlFor="email">E-mail</label><input id="email" type="email" required value={email} onChange={e=>setEmail(e.target.value)} style={{display:'block',width:'100%',padding:12,margin:'8px 0 16px'}}/><label htmlFor="password">Senha</label><input id="password" type="password" required value={password} onChange={e=>setPassword(e.target.value)} style={{display:'block',width:'100%',padding:12,margin:'8px 0 16px'}}/><button disabled={busy} type="submit">Entrar</button></form><p><button disabled={busy} onClick={()=>void login('google')}>Entrar com Google</button></p><p role="status">{message}</p><a href="/">Voltar</a></main>
+ return <main style={{maxWidth:430,margin:'8vh auto',padding:24}}><h1>Acesso ao HUB</h1><p>A autorização administrativa é concedida separadamente.</p><form onSubmit={e=>{e.preventDefault();void login('password')}}><label htmlFor="email">E-mail</label><input id="email" type="email" required value={email} onChange={e=>setEmail(e.target.value)} style={{display:'block',width:'100%',padding:12,margin:'8px 0 16px'}}/><label htmlFor="password">Senha</label><input id="password" type="password" required value={password} onChange={e=>setPassword(e.target.value)} style={{display:'block',width:'100%',padding:12,margin:'8px 0 16px'}}/><button disabled={busy} type="submit">Entrar</button></form><p><button disabled={busy} onClick={()=>void login('google')}>Entrar com Google</button></p><p role="status">{message}</p><p><Link href="/cadastro">Criar minha conta</Link></p><a href="/">Voltar</a></main>
 }
