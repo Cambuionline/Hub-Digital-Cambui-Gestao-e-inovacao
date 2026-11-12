@@ -1,0 +1,12 @@
+import {cert,initializeApp} from 'firebase-admin/app';
+import {getAuth} from 'firebase-admin/auth';
+const expected='admcambuionline@gmail.com';
+if(process.env.CONFIRM_INITIAL_ADMIN!==expected)throw Error('Defina CONFIRM_INITIAL_ADMIN com o e-mail aprovado');
+const {FIREBASE_ADMIN_PROJECT_ID:projectId,FIREBASE_ADMIN_CLIENT_EMAIL:clientEmail,FIREBASE_ADMIN_PRIVATE_KEY:key}=process.env;
+if(!projectId||!clientEmail||!key)throw Error('Credenciais Firebase Admin ausentes');
+if(projectId!=='hub-digital-cambui')throw Error('Projeto Firebase diferente do esperado');
+const app=initializeApp({credential:cert({projectId,clientEmail,privateKey:key.replace(/\\n/g,'\n')})});
+const auth=getAuth(app);const user=await auth.getUserByEmail(expected);
+if(!user.emailVerified||user.disabled)throw Error('Conta deve estar ativa e com e-mail verificado');
+await auth.setCustomUserClaims(user.uid,{...user.customClaims,admin:true});
+console.log('Permissão administrativa atribuída ao UID:',user.uid);
