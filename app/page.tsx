@@ -1,0 +1,1 @@
+export default function Home(){return <main style={{maxWidth:960,margin:'10vh auto',padding:24}}><h1>HUB Digital Cambuí</h1><p>Gestão, inovação, conexões e negócios.</p><p>Plataforma em implantação — Fase 1.</p><a href="/login">Acessar plataforma</a></main>}
