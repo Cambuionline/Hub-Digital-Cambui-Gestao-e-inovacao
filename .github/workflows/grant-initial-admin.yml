@@ -1,0 +1,29 @@
+name: Grant initial HUB administrator (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: 'Digite AUTORIZAR-ADMIN-HUB para confirmar a operação'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  grant-admin:
+    if: ${{ github.event.inputs.confirmation == 'AUTORIZAR-ADMIN-HUB' }}
+    runs-on: ubuntu-latest
+    environment: admin-bootstrap
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm install --ignore-scripts
+      - name: Grant claim to verified initial admin
+        env:
+          FIREBASE_ADMIN_PROJECT_ID: hub-digital-cambui
+          FIREBASE_ADMIN_CLIENT_EMAIL: ${{ secrets.FIREBASE_ADMIN_CLIENT_EMAIL }}
+          FIREBASE_ADMIN_PRIVATE_KEY: ${{ secrets.FIREBASE_ADMIN_PRIVATE_KEY }}
+          CONFIRM_INITIAL_ADMIN: admcambuionline@gmail.com
+        run: node scripts/grant-initial-admin.mjs
