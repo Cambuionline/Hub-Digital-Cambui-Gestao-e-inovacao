@@ -15,10 +15,11 @@ jobs:
     environment: admin-bootstrap
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feat/admin-security-phase2
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
       - run: npm install --ignore-scripts
       - name: Grant claim to verified initial admin
         env:
