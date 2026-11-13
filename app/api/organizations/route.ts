@@ -7,7 +7,7 @@ const reply=(body:object,status=200)=>NextResponse.json(body,{status,headers:{'C
 export async function GET(req:NextRequest){
  try{const user=await requireMember(req);if(!user)return reply({error:'Acesso restrito'},401);
  const snap=await adminDb().collection('organizations').where('ownerUid','==',user.uid).limit(30).get();
- return reply({organizations:snap.docs.map(d=>({id:d.id,name:d.get('name'),type:d.get('type'),status:d.get('status')}))});
+ return reply({organizations:snap.docs.map(d=>({id:d.id,name:d.get('name'),type:d.get('type'),description:d.get('description')??'',status:d.get('status')}))});
  }catch{return reply({error:'Falha ao consultar organizações'},503)}
 }
 export async function POST(req:NextRequest){
