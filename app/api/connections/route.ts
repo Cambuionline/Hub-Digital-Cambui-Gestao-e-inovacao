@@ -1,0 +1,13 @@
+import {NextRequest,NextResponse} from 'next/server';
+import {FieldValue} from 'firebase-admin/firestore';
+import {adminDb} from '@/lib/firestore-admin';
+import {requireMember} from '@/lib/member-guard';
+export const runtime='nodejs';
+const reply=(body:object,status=200)=>NextResponse.json(body,{status,headers:{'Cache-Control':'no-store'}});
+export async function GET(req:NextRequest){try{const user=await requireMember(req);if(!user)return reply({error:'Acesso restrito'},401);const snap=await adminDb().collection('connections').where('requesterUid','==',user.uid).limit(50).get();return reply({connections:snap.docs.map(d=>({id:d.id,organizationId:d.get('organizationId'),status:d.get('status')}))})}catch{return reply({error:'Falha na consulta'},503)}}
+export async function POST(req:NextRequest){try{const user=await requireMember(req);if(!user)return reply({error:'Acesso restrito'},401);const raw=await req.text();if(raw.length>500)return reply({error:'Dados excedem limite'},413);let p:unknown;try{p=JSON.parse(raw)}catch{return reply({error:'JSON inválido'},400)}const organizationId=(p&&typeof p==='object'&&!Array.isArray(p))?(p as Record<string,unknown>).organizationId:null;
+ if(typeof organizationId!=='string'||!/^[a-zA-Z0-9]{15,32}$/.test(organizationId))return reply({error:'Organização inválida'},400);
+ const db=adminDb(),profile=await db.collection('users').doc(user.uid).get();if(profile.get('status')!=='approved')return reply({error:'Seu perfil precisa estar aprovado'},403);
+ const orgRef=db.collection('organizations').doc(organizationId),connectionId=user.uid+'_'+organizationId,ref=db.collection('connections').doc(connectionId);
+ await db.runTransaction(async tx=>{const [org,existing]=await Promise.all([tx.get(orgRef),tx.get(ref)]);if(!org.exists||org.get('status')!=='approved')throw Error('NOT_FOUND');if(org.get('ownerUid')===user.uid)throw Error('SELF');if(existing.exists)throw Error('DUPLICATE');tx.create(ref,{requesterUid:user.uid,recipientUid:org.get('ownerUid'),organizationId,status:'pending',createdAt:FieldValue.serverTimestamp()});tx.create(db.collection('auditLogs').doc(),{actorUid:user.uid,action:'connection.requested',resource:'organizations/'+organizationId,createdAt:FieldValue.serverTimestamp()})});return reply({ok:true,status:'pending'},201);
+ }catch(e){const m=e instanceof Error?e.message:'';return reply({error:m==='DUPLICATE'?'Solicitação já enviada':m==='SELF'?'Não é possível conectar-se à própria organização':m==='NOT_FOUND'?'Organização indisponível':'Falha ao solicitar conexão'},{status:m==='DUPLICATE'?409:m==='SELF'?403:m==='NOT_FOUND'?404:503})}}
