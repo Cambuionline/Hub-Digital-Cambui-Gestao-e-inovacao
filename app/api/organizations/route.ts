@@ -24,3 +24,23 @@ export async function POST(req:NextRequest){
  return reply({ok:true,id:ref.id,status:'pending_review'},201);
  }catch{return reply({error:'Não foi possível registrar a organização'},503)}
 }
+
+export async function PATCH(req:NextRequest){
+ try{
+  const user=await requireMember(req);if(!user)return reply({error:'Acesso restrito'},401);
+  const raw=await req.text();if(raw.length>3000)return reply({error:'Dados excedem o limite'},413);
+  let p:unknown;try{p=JSON.parse(raw)}catch{return reply({error:'JSON inválido'},400)}
+  if(!p||typeof p!=='object'||Array.isArray(p))return reply({error:'Dados inválidos'},400);
+  const v=p as Record<string,unknown>,id=typeof v.id==='string'?v.id:'',name=typeof v.name==='string'?v.name.trim():'',type=typeof v.type==='string'?v.type:'',description=typeof v.description==='string'?v.description.trim():'';
+  if(!/^[a-zA-Z0-9_-]{10,120}$/.test(id)||name.length<3||name.length>160||description.length>1000||!['empresa','startup','ict','ong','governo','investidor_institucional','outra'].includes(type))return reply({error:'Dados inválidos'},400);
+  const db=adminDb(),ref=db.collection('organizations').doc(id);
+  await db.runTransaction(async tx=>{
+   const doc=await tx.get(ref);if(!doc.exists)throw Error('NOT_FOUND');
+   if(doc.get('ownerUid')!==user.uid)throw Error('FORBIDDEN');
+   if(!['approved','pending_review','rejected'].includes(doc.get('status')))throw Error('INVALID_STATE');
+   tx.update(ref,{name,type,description,status:'pending_review',updatedAt:FieldValue.serverTimestamp()});
+   tx.create(db.collection('auditLogs').doc(),{actorUid:user.uid,action:'organization.updated',resource:'organizations/'+id,createdAt:FieldValue.serverTimestamp()});
+  });
+  return reply({ok:true,status:'pending_review'});
+ }catch(e){const m=e instanceof Error?e.message:'';return reply({error:m==='NOT_FOUND'?'Organização não encontrada':m==='FORBIDDEN'?'Acesso negado':m==='INVALID_STATE'?'Estado não permite edição':'Falha ao atualizar organização'},m==='NOT_FOUND'?404:m==='FORBIDDEN'?403:m==='INVALID_STATE'?409:503)}
+}
