@@ -2,6 +2,7 @@ import {NextRequest,NextResponse} from 'next/server';
 import {FieldValue} from 'firebase-admin/firestore';
 import {adminDb} from '@/lib/firestore-admin';
 import {requireSuperadmin} from '@/lib/admin-guard';
+import {queueEnrollmentEmail} from '@/lib/enrollment-email';
 export const runtime='nodejs';
 const valid=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,150}$/.test(v);
 export async function POST(req:NextRequest){
@@ -29,6 +30,7 @@ export async function POST(req:NextRequest){
    return 'OK';
   });
   if(result!=='OK')return NextResponse.json({error:({INVALID_ACTIVITY:'Selecione uma nova turma publicada da mesma categoria',NOT_WAITLISTED:'Participante não está na lista de espera',ALREADY_ENROLLED:'Participante já está inscrito na nova turma',EXPIRED:'A nova turma já terminou',FULL:'A nova turma está lotada'} as Record<string,string>)[result]??'Transferência indisponível'},{status:409});
+  try{const enrollment=await oldRef.get();await queueEnrollmentEmail({kind:'transferred',announcementId:body.sourceAnnouncementId,userUid:body.userUid,email:enrollment.get('userEmail'),targetAnnouncementId:body.targetAnnouncementId})}catch(e){console.error('transfer email queue failed',e)}
   return NextResponse.json({ok:true,status:'transferred',targetAnnouncementId:body.targetAnnouncementId},{headers:{'Cache-Control':'no-store'}});
  }catch(e){console.error('waitlist transfer failed',e);return NextResponse.json({error:'Não foi possível transferir o participante'},{status:503})}
 }
