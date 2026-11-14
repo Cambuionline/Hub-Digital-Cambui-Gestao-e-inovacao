@@ -14,7 +14,7 @@ export async function GET(req:NextRequest){
   // Query by manager, then paginate by stable document ID. No collection-wide scan.
   let query=db.collection('hub_admin_messages').where('adminUid','==',admin.uid).orderBy(FieldPath.documentId()).limit(PAGE_SIZE+1);
   if(cursor)query=query.startAfter(cursor);
-  const [snap,totalSnapshot]=await Promise.all([query.get(),db.collection('hub_admin_messages').where('adminUid','==',admin.uid).count().get()]);
+  const [snap,totalSnapshot,unreadSnapshot]=await Promise.all([query.get(),db.collection('hub_admin_messages').where('adminUid','==',admin.uid).count().get(),db.collection('hub_admin_messages').where('adminUid','==',admin.uid).where('direction','==','member_to_admin').where('readAt','==',null).count().get()]);
   const page=snap.docs.slice(0,PAGE_SIZE);
   const nextCursor=snap.docs.length>PAGE_SIZE?page[page.length-1].id:null;
   const messages=page.filter(d=>d.get('direction')==='member_to_admin').map(d=>({id:d.id,uid:String(d.get('recipientUid')??''),text:String(d.get('text')??''),createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null,readAt:d.get('readAt')?.toDate?.()?.toISOString?.()??null}));
@@ -24,6 +24,6 @@ export async function GET(req:NextRequest){
    if(!previous)latest.set(m.uid,{uid:m.uid,lastText:m.text,lastAt:m.createdAt,unread:m.readAt?0:1});
    else if(!m.readAt)previous.unread++;
   }
-  return reply({unread:messages.filter(m=>!m.readAt).length,conversations:[...latest.values()],nextCursor,hasMore:!!nextCursor,partial:true,totalStored:totalSnapshot.data().count,pageSize:PAGE_SIZE,returnedMessages:messages.length});
+  return reply({unread:messages.filter(m=>!m.readAt).length,unreadGlobal:unreadSnapshot.data().count,conversations:[...latest.values()],nextCursor,hasMore:!!nextCursor,partial:true,totalStored:totalSnapshot.data().count,pageSize:PAGE_SIZE,returnedMessages:messages.length});
  }catch(e){console.error('admin inbox pagination failed',e);return reply({error:'Não foi possível consultar mensagens'},503)}
 }
