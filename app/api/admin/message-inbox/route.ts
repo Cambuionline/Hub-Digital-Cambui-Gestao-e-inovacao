@@ -1,5 +1,29 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {adminDb} from '@/lib/firestore-admin';
 import {requireSuperadmin} from '@/lib/admin-guard';
+import {FieldPath} from 'firebase-admin/firestore';
 export const runtime='nodejs';
-export async function GET(req:NextRequest){try{const admin=await requireSuperadmin(req);if(!admin)return NextResponse.json({error:'Acesso restrito'},{status:403});const snap=await adminDb().collection('hub_admin_messages').where('adminUid','==',admin.uid).limit(500).get();const items=snap.docs.filter(d=>d.get('direction')==='member_to_admin').map(d=>({id:d.id,uid:d.get('recipientUid')??'',text:d.get('text')??'',createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null,readAt:d.get('readAt')?.toDate?.()?.toISOString?.()??null})).sort((a,b)=>(b.createdAt??'').localeCompare(a.createdAt??''));const latest=new Map<string,{uid:string;lastText:string;lastAt:string|null;unread:number}>();for(const m of items){if(!m.uid)continue;const current=latest.get(m.uid);if(!current)latest.set(m.uid,{uid:m.uid,lastText:m.text,lastAt:m.createdAt,unread:m.readAt?0:1});else if(!m.readAt)current.unread++}return NextResponse.json({unread:items.filter(m=>!m.readAt).length,conversations:[...latest.values()],truncated:snap.size===500},{headers:{'Cache-Control':'no-store'}})}catch(e){console.error('admin incoming inbox failed',e);return NextResponse.json({error:'Não foi possível consultar respostas'},{status:503})}}
+const PAGE_SIZE=100;
+const reply=(data:object,status=200)=>NextResponse.json(data,{status,headers:{'Cache-Control':'no-store'}});
+export async function GET(req:NextRequest){
+ try{
+  const admin=await requireSuperadmin(req);if(!admin)return reply({error:'Acesso restrito'},403);
+  const cursor=req.nextUrl.searchParams.get('cursor');
+  if(cursor&&(cursor.length>150||!/^[A-Za-z0-9_-]+$/.test(cursor)))return reply({error:'Cursor inválido'},400);
+  const db=adminDb();
+  // Query by manager, then paginate by stable document ID. No collection-wide scan.
+  let query=db.collection('hub_admin_messages').where('adminUid','==',admin.uid).orderBy(FieldPath.documentId()).limit(PAGE_SIZE+1);
+  if(cursor)query=query.startAfter(cursor);
+  const snap=await query.get();
+  const page=snap.docs.slice(0,PAGE_SIZE);
+  const nextCursor=snap.docs.length>PAGE_SIZE?page[page.length-1].id:null;
+  const messages=page.filter(d=>d.get('direction')==='member_to_admin').map(d=>({id:d.id,uid:String(d.get('recipientUid')??''),text:String(d.get('text')??''),createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null,readAt:d.get('readAt')?.toDate?.()?.toISOString?.()??null}));
+  const latest=new Map<string,{uid:string;lastText:string;lastAt:string|null;unread:number}>();
+  for(const m of messages.sort((a,b)=>(b.createdAt??'').localeCompare(a.createdAt??''))){
+   if(!m.uid)continue;const previous=latest.get(m.uid);
+   if(!previous)latest.set(m.uid,{uid:m.uid,lastText:m.text,lastAt:m.createdAt,unread:m.readAt?0:1});
+   else if(!m.readAt)previous.unread++;
+  }
+  return reply({unread:messages.filter(m=>!m.readAt).length,conversations:[...latest.values()],nextCursor,hasMore:!!nextCursor,partial:true});
+ }catch(e){console.error('admin inbox pagination failed',e);return reply({error:'Não foi possível consultar mensagens'},503)}
+}
