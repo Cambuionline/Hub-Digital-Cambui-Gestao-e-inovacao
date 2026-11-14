@@ -24,6 +24,6 @@ export async function GET(req:NextRequest){
    if(!previous)latest.set(m.uid,{uid:m.uid,lastText:m.text,lastAt:m.createdAt,unread:m.readAt?0:1});
    else if(!m.readAt)previous.unread++;
   }
-  return reply({unread:messages.filter(m=>!m.readAt).length,unreadGlobal:unreadSnapshot.data().count,conversations:[...latest.values()],nextCursor,hasMore:!!nextCursor,partial:true,totalStored:totalSnapshot.data().count,pageSize:PAGE_SIZE,returnedMessages:messages.length});
+  return reply({unread:messages.filter(m=>!m.readAt).length,unreadGlobal:Math.max(0,incomingSnapshot.data().count-readSnapshot.data().count),conversations:[...latest.values()],nextCursor,hasMore:!!nextCursor,partial:true,totalStored:totalSnapshot.data().count,pageSize:PAGE_SIZE,returnedMessages:messages.length});
  }catch(e){console.error('admin inbox pagination failed',e);return reply({error:'Não foi possível consultar mensagens'},503)}
 }
