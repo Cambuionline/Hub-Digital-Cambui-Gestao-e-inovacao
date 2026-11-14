@@ -1,0 +1,16 @@
+'use client';
+import Link from 'next/link';
+import {useEffect,useState} from 'react';
+import {onAuthStateChanged,type User} from 'firebase/auth';
+import {createFirebaseClient} from '@/lib/firebase';
+import MemberNavigation from '@/components/member-navigation';
+type Announcement={id:string;kind:'event'|'course'|'opportunity';title:string;description:string;href:string;startDate:string|null;endDate:string|null;deadline:string|null;createdAt:string|null};
+const format=(date:string|null)=>date?new Date(date+'T12:00:00').toLocaleDateString('pt-BR'):'Não informado';
+export default function AgendaHub(){
+ const [user,setUser]=useState<User|null>(null),[items,setItems]=useState<Announcement[]>([]);
+ const [filter,setFilter]=useState('all'),[search,setSearch]=useState(''),[status,setStatus]=useState('Carregando publicações...');
+ useEffect(()=>{const {auth}=createFirebaseClient();return onAuthStateChanged(auth,async u=>{setUser(u);if(!u){setStatus('Faça login para consultar a agenda do HUB.');setItems([]);return}try{const token=await u.getIdToken();const res=await fetch('/api/announcements',{headers:{Authorization:'Bearer '+token},cache:'no-store'});if(!res.ok)throw Error('Consulta indisponível ('+res.status+').');const data=await res.json() as {items?:Announcement[]};setItems(data.items??[]);setStatus('')}catch(e){setStatus(e instanceof Error?e.message:'Não foi possível carregar a agenda')}})},[]);
+ const today=new Date().toLocaleDateString('en-CA');
+ const filtered=items.filter(a=>(filter==='all'||a.kind===filter)&&(a.title+' '+a.description).toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR')));
+ return <main className="admin-shell"><div className="admin-panel member-dashboard"><MemberNavigation/><span className="eyebrow dark">HUB DIGITAL CAMBUÍ</span><h1>Agenda e oportunidades</h1><p>Conheça eventos, capacitações e oportunidades publicados pelo HUB.</p><div style={{display:'flex',gap:12,flexWrap:'wrap',margin:'20px 0'}}><label>Categoria <select value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">Todas</option><option value="event">Eventos</option><option value="course">Cursos</option><option value="opportunity">Oportunidades</option></select></label><label>Pesquisar <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar pelo título ou descrição"/></label></div>{status&&<p role="status">{status}</p>}{!status&&filtered.length===0&&<p>Nenhuma publicação encontrada para este filtro.</p>}<div className="review-list">{filtered.map(a=>{const end=a.kind==='opportunity'?a.deadline:a.endDate;const expired=!!end&&end<today;return <article className="review-item" key={a.id}><div><strong>{a.title}</strong><p>{a.kind==='event'?'Evento':a.kind==='course'?'Curso':'Oportunidade'} · {expired?'Prazo encerrado':'Publicado'}</p><p>{a.description}</p><p>{a.kind==='opportunity'?'Prazo final: '+format(a.deadline):'De '+format(a.startDate)+' até '+format(a.endDate)}</p></div><div className="review-actions"><Link className="button" href={a.href||'/perfil'}>Ver informações</Link></div></article>})}</div><p><Link href="/perfil">Voltar ao perfil</Link></p></div></main>
+}
