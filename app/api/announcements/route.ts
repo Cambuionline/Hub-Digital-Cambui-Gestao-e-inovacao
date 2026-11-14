@@ -1,3 +1,4 @@
+import {validatePublicationDates,type PublicationKind} from '@/lib/publication-dates';
 import {NextRequest,NextResponse} from 'next/server';
 import {FieldValue} from 'firebase-admin/firestore';
 import {adminDb} from '@/lib/firestore-admin';
@@ -12,7 +13,7 @@ export async function GET(req:NextRequest){
  const member=await requireMember(req);
  if(!member)return NextResponse.json({error:'Autenticação necessária'},{status:401});
  const snap=await adminDb().collection('hub_announcements').where('status','==','published').limit(100).get();
- const items=snap.docs.map(d=>({id:d.id,kind:d.get('kind') as Kind,title:d.get('title')??'',description:d.get('description')??'',href:d.get('href')??'',createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null})).sort((a,b)=>(b.createdAt??'').localeCompare(a.createdAt??''));
+ const items=snap.docs.map(d=>({id:d.id,kind:d.get('kind') as Kind,title:d.get('title')??'',description:d.get('description')??'',href:d.get('href')??'',startDate:d.get('startDate')??null,endDate:d.get('endDate')??null,deadline:d.get('deadline')??null,createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null})).sort((a,b)=>(b.createdAt??'').localeCompare(a.createdAt??''));
  return NextResponse.json({items},{headers:{'Cache-Control':'no-store'}});
  }catch{return NextResponse.json({error:'Falha ao consultar publicações'},{status:503})}
 }
@@ -24,7 +25,8 @@ export async function POST(req:NextRequest){
  const kind=body.kind;
  const title=clean(body.title,120),description=clean(body.description,500),href=clean(body.href,400);
  if(!kinds.includes(kind as Kind)||title.length<5||description.length<10||!href.startsWith('/')||href.startsWith('//')||/[\\\r\n]/.test(href))return NextResponse.json({error:'Dados inválidos; informe tipo, título, descrição e rota interna'},{status:400});
- const ref=await adminDb().collection('hub_announcements').add({kind,title,description,href,status:'published',createdBy:admin.uid,createdAt:FieldValue.serverTimestamp()});
+ const validation=validatePublicationDates(kind as PublicationKind,body);if(!validation.dates)return NextResponse.json({error:validation.error},{status:400});
+ const ref=await adminDb().collection('hub_announcements').add({kind,title,description,href,...validation.dates,status:'published',createdBy:admin.uid,createdAt:FieldValue.serverTimestamp()});
  return NextResponse.json({id:ref.id,ok:true},{status:201,headers:{'Cache-Control':'no-store'}});
  }catch{return NextResponse.json({error:'Falha ao publicar comunicado'},{status:503})}
 }
