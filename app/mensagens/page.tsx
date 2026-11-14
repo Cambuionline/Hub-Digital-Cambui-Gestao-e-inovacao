@@ -4,7 +4,7 @@ import {onAuthStateChanged,type User} from 'firebase/auth';
 import {createFirebaseClient} from '@/lib/firebase';
 import MemberNavigation from '@/components/member-navigation';
 type Conversation={id:string;organizationName:string;organizationLogo:string;participantName:string;unread:number;lastMessageText:string;lastMessageAt:string|null};
-type Message={id:string;text:string;senderUid:string;createdAt:string|null};type ManagerMessage={id:string;subject:string;text:string;createdAt:string|null;readAt:string|null};
+type Message={id:string;text:string;senderUid:string;createdAt:string|null};type ManagerMessage={id:string;subject:string;text:string;createdAt:string|null;readAt:string|null;direction:'admin_to_member'|'member_to_admin'};
 export default function MessagesPage(){
  const requestedConnection=typeof window==='undefined'?null:new URLSearchParams(window.location.search).get('connectionId');
  const [user,setUser]=useState<User|null>(null),[conversations,setConversations]=useState<Conversation[]>([]),[selected,setSelected]=useState(''),[messages,setMessages]=useState<Message[]>([]),[text,setText]=useState(''),[status,setStatus]=useState('Entre para acessar suas mensagens.'),[busy,setBusy]=useState(false);
