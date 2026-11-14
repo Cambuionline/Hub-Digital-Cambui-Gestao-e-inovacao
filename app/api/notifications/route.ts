@@ -8,7 +8,7 @@ export async function GET(req:NextRequest){
   const member=await requireMember(req);
   if(!member)return NextResponse.json({error:'Acesso restrito'},{status:401});
   const db=adminDb();
-  type Notice={id:string;type:string;title:string;description:string;href:string;createdAt:string|null};
+  type Notice={id:string;type:string;title:string;description:string;href:string;createdAt:string|null;startDate?:string|null;endDate?:string|null;deadline?:string|null};
   const notices:Notice[]=[];
   const warnings:string[]=[];
   // Publicações independem de consultas de conexões ou mensagens.
