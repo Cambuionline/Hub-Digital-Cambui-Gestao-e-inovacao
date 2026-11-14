@@ -24,6 +24,14 @@ export async function GET(req:NextRequest){
    notices.push(...results);
   }catch{warnings.push('Não foi possível consultar conexões')}
   try{
+   const registrations=await db.collection('hub_enrollments').where('userUid','==',member.uid).limit(100).get();
+   const transferred=registrations.docs.filter(d=>d.get('status')==='transferred'&&typeof d.get('transferredTo')==='string');
+   const targetIds=[...new Set(transferred.map(d=>String(d.get('transferredTo'))))];
+   const targetDocs=await Promise.all(targetIds.map(id=>db.collection('hub_announcements').doc(id).get()));
+   const targetNames=new Map(targetDocs.map(d=>[d.id,String(d.get('title')??'Nova turma')]));
+   for(const d of transferred){const target=String(d.get('transferredTo'));notices.push({id:'transfer:'+d.id,type:'cohort_transfer',title:'Inscrição confirmada em nova turma',description:'Sua vaga foi confirmada em '+(targetNames.get(target)??'uma nova turma')+'. Acesse a agenda para conferir.',href:'/agenda',createdAt:d.get('transferredAt')?.toDate?.()?.toISOString?.()??null})}
+  }catch{warnings.push('Não foi possível consultar transferências')}
+  try{
    const admin=await requireSuperadmin(req);
    if(admin){
     const [users,orgs]=await Promise.all([db.collection('users').where('status','==','pending_review').limit(50).get(),db.collection('organizations').where('status','==','pending_review').limit(50).get()]);
@@ -41,7 +49,7 @@ export async function POST(req:NextRequest){
  try{
  const member=await requireMember(req);if(!member)return NextResponse.json({error:'Acesso restrito'},{status:401});
  const body=await req.json() as {id?:unknown;sourceTimestamp?:unknown};
- if(typeof body.id!=='string'||body.id.length>220||! /^(connection|accepted|user|org|announcement):[A-Za-z0-9_-]{1,150}$/.test(body.id)||!(body.sourceTimestamp===null||typeof body.sourceTimestamp==='string'&&body.sourceTimestamp.length<80))return NextResponse.json({error:'Notificação inválida'},{status:400});
+ if(typeof body.id!=='string'||body.id.length>220||! /^(connection|accepted|user|org|announcement|transfer):[A-Za-z0-9_-]{1,150}$/.test(body.id)||!(body.sourceTimestamp===null||typeof body.sourceTimestamp==='string'&&body.sourceTimestamp.length<80))return NextResponse.json({error:'Notificação inválida'},{status:400});
  // Recompute accessible notifications before allowing a read marker to be saved.
  const auth=req.headers.get('authorization')??'';
  const own=await GET(new NextRequest(req.url,{headers:{authorization:auth}}));
