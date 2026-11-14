@@ -27,6 +27,7 @@ export async function POST(req:NextRequest){
  if(!kinds.includes(kind as Kind)||title.length<5||description.length<10||!href.startsWith('/')||href.startsWith('//')||/[\\\r\n]/.test(href))return NextResponse.json({error:'Dados inválidos; informe tipo, título, descrição e rota interna'},{status:400});
  const validation=validatePublicationDates(kind as PublicationKind,body);if(!validation.dates)return NextResponse.json({error:validation.error},{status:400});
  const ref=await adminDb().collection('hub_announcements').add({kind,title,description,href,...validation.dates,status:'published',createdBy:admin.uid,createdAt:FieldValue.serverTimestamp()});
- return NextResponse.json({id:ref.id,ok:true},{status:201,headers:{'Cache-Control':'no-store'}});
- }catch{return NextResponse.json({error:'Falha ao publicar comunicado'},{status:503})}
+ const saved=await ref.get();if(!saved.exists||saved.get('status')!=='published')return NextResponse.json({error:'Registro não confirmado no Firestore. Consulte a relação antes de tentar novamente.',id:ref.id},{status:503});
+ return NextResponse.json({id:ref.id,ok:true,confirmed:true,title:saved.get('title'),status:saved.get('status')},{status:201,headers:{'Cache-Control':'no-store'}});
+ }catch(e){console.error('announcement create failed',e);return NextResponse.json({error:'Falha ao gravar ou confirmar publicação no Firestore. Verifique a conexão do servidor e tente novamente.'},{status:503})}
 }
