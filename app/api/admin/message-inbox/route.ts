@@ -1,7 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {adminDb} from '@/lib/firestore-admin';
 import {requireSuperadmin} from '@/lib/admin-guard';
-import {FieldPath} from 'firebase-admin/firestore';
+import {FieldPath,Timestamp} from 'firebase-admin/firestore';
 export const runtime='nodejs';
 const PAGE_SIZE=100;
 const reply=(data:object,status=200)=>NextResponse.json(data,{status,headers:{'Cache-Control':'no-store'}});
@@ -14,7 +14,7 @@ export async function GET(req:NextRequest){
   // Query by manager, then paginate by stable document ID. No collection-wide scan.
   let query=db.collection('hub_admin_messages').where('adminUid','==',admin.uid).orderBy(FieldPath.documentId()).limit(PAGE_SIZE+1);
   if(cursor)query=query.startAfter(cursor);
-  const [snap,totalSnapshot,unreadSnapshot]=await Promise.all([query.get(),db.collection('hub_admin_messages').where('adminUid','==',admin.uid).count().get(),db.collection('hub_admin_messages').where('adminUid','==',admin.uid).where('direction','==','member_to_admin').where('readAt','==',null).count().get()]);
+  const [snap,totalSnapshot,incomingSnapshot,readSnapshot]=await Promise.all([query.get(),db.collection('hub_admin_messages').where('adminUid','==',admin.uid).count().get(),db.collection('hub_admin_messages').where('adminUid','==',admin.uid).where('direction','==','member_to_admin').count().get(),db.collection('hub_admin_messages').where('adminUid','==',admin.uid).where('direction','==','member_to_admin').where('readAt','>',Timestamp.fromMillis(0)).count().get()]);
   const page=snap.docs.slice(0,PAGE_SIZE);
   const nextCursor=snap.docs.length>PAGE_SIZE?page[page.length-1].id:null;
   const messages=page.filter(d=>d.get('direction')==='member_to_admin').map(d=>({id:d.id,uid:String(d.get('recipientUid')??''),text:String(d.get('text')??''),createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null,readAt:d.get('readAt')?.toDate?.()?.toISOString?.()??null}));
