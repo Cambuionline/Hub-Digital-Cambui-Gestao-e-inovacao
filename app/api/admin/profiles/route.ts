@@ -25,6 +25,7 @@ export async function PATCH(req:NextRequest){
  const auth=adminAuth();const target=await auth.getUser(uid);
  if(target.customClaims?.admin===true)return response({error:'Não é permitido modificar outra conta administrativa'},403);
  const db=adminDb(),ref=db.collection('users').doc(uid);
+ const current=await ref.get();if(current.get('status')==='deleted')return response({error:'Conta desativada permanentemente pelo gestor'},409);
  if(action==='delete'){
    await auth.updateUser(uid,{disabled:true});
    await db.runTransaction(async tx=>{const snap=await tx.get(ref);tx.set(ref,{status:'deleted',disabled:true,deletedAt:FieldValue.serverTimestamp(),deletedBy:admin.uid,updatedAt:FieldValue.serverTimestamp()},{merge:true});tx.create(db.collection('auditLogs').doc(),{actorUid:admin.uid,action:'profile.deactivated',resource:'users/'+uid,previousStatus:snap.get('status')??null,createdAt:FieldValue.serverTimestamp()})});
@@ -33,7 +34,7 @@ export async function PATCH(req:NextRequest){
  }
  const disabled=action==='block';
  await auth.updateUser(uid,{disabled});
- await db.runTransaction(async tx=>{const snap=await tx.get(ref);if(snap.get('status')==='deleted')throw Error('DELETED');tx.set(ref,{disabled,updatedAt:FieldValue.serverTimestamp(),blockedAt:disabled?FieldValue.serverTimestamp():FieldValue.delete(),blockedBy:disabled?admin.uid:FieldValue.delete()},{merge:true});tx.create(db.collection('auditLogs').doc(),{actorUid:admin.uid,action:disabled?'profile.blocked':'profile.unblocked',resource:'users/'+uid,createdAt:FieldValue.serverTimestamp()})});
+ await db.runTransaction(async tx=>{const snap=await tx.get(ref);tx.set(ref,{disabled,updatedAt:FieldValue.serverTimestamp(),blockedAt:disabled?FieldValue.serverTimestamp():FieldValue.delete(),blockedBy:disabled?admin.uid:FieldValue.delete()},{merge:true});tx.create(db.collection('auditLogs').doc(),{actorUid:admin.uid,action:disabled?'profile.blocked':'profile.unblocked',resource:'users/'+uid,createdAt:FieldValue.serverTimestamp()})});
  if(disabled)await auth.revokeRefreshTokens(uid);
  return response({ok:true,disabled});
  }catch(e){console.error('admin user action failed',e);return response({error:e instanceof Error&&e.message==='DELETED'?'Perfil excluído não pode ser desbloqueado':'Não foi possível concluir a operação'},e instanceof Error&&e.message==='DELETED'?409:503)}
