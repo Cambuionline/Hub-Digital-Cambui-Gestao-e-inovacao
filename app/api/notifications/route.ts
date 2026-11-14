@@ -23,6 +23,7 @@ export async function GET(req:NextRequest){
    const results=await Promise.all([...pending.map(async d=>{const p=await db.collection('users').doc(d.get('requesterUid')).get();return {id:'connection:'+d.id,type:'connection_request',title:'Nova solicitação de conexão',description:(p.get('displayName')??'Um participante')+' deseja se conectar.',href:'/conexoes',createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null}}),...accepted.map(async d=>{const org=await db.collection('organizations').doc(d.get('organizationId')).get();return {id:'accepted:'+d.id,type:'connection_accepted',title:'Conexão aprovada',description:'Sua conexão com '+(org.get('name')??'uma organização')+' foi aprovada.',href:'/mensagens?connectionId='+encodeURIComponent(d.id),createdAt:d.get('updatedAt')?.toDate?.()?.toISOString?.()??null}})]);
    notices.push(...results);
   }catch{warnings.push('Não foi possível consultar conexões')}
+  try{const direct=await db.collection('hub_admin_messages').where('recipientUid','==',member.uid).limit(100).get();for(const d of direct.docs)notices.push({id:'manager:'+d.id,type:'manager_message',title:String(d.get('subject')??'Mensagem do gestor'),description:String(d.get('text')??''),href:'/perfil',createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null})}catch{warnings.push('Não foi possível consultar mensagens do gestor')}
   try{
    const registrations=await db.collection('hub_enrollments').where('userUid','==',member.uid).limit(100).get();
    const transferred=registrations.docs.filter(d=>d.get('status')==='transferred'&&typeof d.get('transferredTo')==='string');
@@ -49,7 +50,7 @@ export async function POST(req:NextRequest){
  try{
  const member=await requireMember(req);if(!member)return NextResponse.json({error:'Acesso restrito'},{status:401});
  const body=await req.json() as {id?:unknown;sourceTimestamp?:unknown};
- if(typeof body.id!=='string'||body.id.length>220||! /^(connection|accepted|user|org|announcement|transfer):[A-Za-z0-9_-]{1,150}$/.test(body.id)||!(body.sourceTimestamp===null||typeof body.sourceTimestamp==='string'&&body.sourceTimestamp.length<80))return NextResponse.json({error:'Notificação inválida'},{status:400});
+ if(typeof body.id!=='string'||body.id.length>220||! /^(connection|accepted|user|org|announcement|transfer|manager):[A-Za-z0-9_-]{1,150}$/.test(body.id)||!(body.sourceTimestamp===null||typeof body.sourceTimestamp==='string'&&body.sourceTimestamp.length<80))return NextResponse.json({error:'Notificação inválida'},{status:400});
  // Recompute accessible notifications before allowing a read marker to be saved.
  const auth=req.headers.get('authorization')??'';
  const own=await GET(new NextRequest(req.url,{headers:{authorization:auth}}));
