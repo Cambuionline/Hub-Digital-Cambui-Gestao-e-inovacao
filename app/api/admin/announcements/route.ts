@@ -11,7 +11,7 @@ export async function GET(req:NextRequest){
  try{
  const admin=await requireSuperadmin(req);if(!admin)return NextResponse.json({error:'Acesso restrito'},{status:403});
  const snap=await adminDb().collection('hub_announcements').limit(200).get();
- const items=snap.docs.map(d=>({id:d.id,kind:d.get('kind')??'event',title:d.get('title')??'',description:d.get('description')??'',href:d.get('href')??'/',status:d.get('status')??'draft',startDate:d.get('startDate')??null,endDate:d.get('endDate')??null,deadline:d.get('deadline')??null,createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null,updatedAt:d.get('updatedAt')?.toDate?.()?.toISOString?.()??null})).sort((a,b)=>(b.createdAt??'').localeCompare(a.createdAt??''));
+ const items=snap.docs.map(d=>({id:d.id,kind:d.get('kind')??'event',title:d.get('title')??'',description:d.get('description')??'',href:d.get('href')??'/',status:d.get('status')??'draft',startDate:d.get('startDate')??null,endDate:d.get('endDate')??null,deadline:d.get('deadline')??null,capacity:d.get('capacity')??null,registeredCount:d.get('registeredCount')??0,waitlistCount:d.get('waitlistCount')??0,createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null,updatedAt:d.get('updatedAt')?.toDate?.()?.toISOString?.()??null})).sort((a,b)=>(b.createdAt??'').localeCompare(a.createdAt??''));
  return NextResponse.json({items},{headers:{'Cache-Control':'no-store'}});
  }catch{return NextResponse.json({error:'Não foi possível carregar publicações'},{status:503})}
 }
