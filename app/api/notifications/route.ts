@@ -14,7 +14,7 @@ export async function GET(req:NextRequest){
   // Publicações independem de consultas de conexões ou mensagens.
   try{
    const snap=await db.collection('hub_announcements').where('status','==','published').limit(100).get();
-   for(const d of snap.docs)notices.push({id:'announcement:'+d.id,type:d.get('kind')??'opportunity',title:d.get('title')??'Novidade no HUB',description:d.get('description')??'',href:d.get('href')??'/',createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null});
+   for(const d of snap.docs)notices.push({id:'announcement:'+d.id,type:d.get('kind')??'opportunity',title:d.get('title')??'Novidade no HUB',description:d.get('description')??'',href:d.get('href')??'/',startDate:d.get('startDate')??null,endDate:d.get('endDate')??null,deadline:d.get('deadline')??null,createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null});
   }catch{warnings.push('Não foi possível consultar publicações')}
   try{
    const [incoming,outgoing]=await Promise.all([db.collection('connections').where('recipientUid','==',member.uid).limit(50).get(),db.collection('connections').where('requesterUid','==',member.uid).limit(50).get()]);
