@@ -20,6 +20,7 @@ export async function PATCH(req:NextRequest){
  try{const admin=await requireSuperadmin(req);if(!admin)return response({error:'Acesso restrito'},403);
  const raw=await req.text();if(raw.length>1000)return response({error:'Requisição muito grande'},413);
  let body:Record<string,unknown>;try{body=JSON.parse(raw)}catch{return response({error:'JSON inválido'},400)}
+ if(body.action==='read-message'){if(!validUid(body.uid)||typeof body.messageId!=='string'||!/^[A-Za-z0-9_-]{1,150}$/.test(body.messageId))return response({error:'Mensagem inválida'},400);const db=adminDb();const ref=db.collection('hub_admin_messages').doc(body.messageId);const result=await db.runTransaction(async tx=>{const doc=await tx.get(ref);if(!doc.exists||doc.get('recipientUid')!==body.uid||doc.get('direction')!=='member_to_admin'||doc.get('adminUid')!==admin.uid)return 'NOT_FOUND';if(doc.get('readAt'))return 'ALREADY';tx.update(ref,{readAt:FieldValue.serverTimestamp()});return 'READ'});return result==='NOT_FOUND'?response({error:'Mensagem indisponível'},404):response({ok:true,status:result});}
  const {uid,action}=body;
  if(!validUid(uid)||!['block','unblock','delete'].includes(String(action)))return response({error:'Ação inválida'},400);
  if(uid===admin.uid)return response({error:'Não é permitido modificar a própria conta'},403);
