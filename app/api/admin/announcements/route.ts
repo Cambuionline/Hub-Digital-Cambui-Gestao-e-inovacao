@@ -4,7 +4,7 @@ import {FieldValue} from 'firebase-admin/firestore';
 import {requireSuperadmin} from '@/lib/admin-guard';
 import {adminDb} from '@/lib/firestore-admin';
 export const runtime='nodejs';
-const kinds=['event','course','opportunity'];
+const kinds=['event','course','opportunity','workshop','mentoring','incubation','acceleration','meeting','consulting'];
 const validId=(id:unknown):id is string=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,150}$/.test(id);
 const clean=(v:unknown,max:number)=>typeof v==='string'?v.trim().slice(0,max):'';
 export async function GET(req:NextRequest){
