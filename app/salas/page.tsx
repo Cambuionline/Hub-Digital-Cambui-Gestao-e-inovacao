@@ -1,0 +1,16 @@
+'use client';
+import {useEffect,useState} from 'react';
+import {onAuthStateChanged,type User} from 'firebase/auth';
+import {createFirebaseClient} from '@/lib/firebase';
+type Session={id:string;title:string;kind:string;start:string;end:string;joinable:boolean};
+type Room={id:string;name:string;sessions:Session[]};
+const kinds:Record<string,string>={live:'Live',meeting:'Reunião',workshop:'Workshop',training:'Treinamento',incubation:'Incubação',acceleration:'Aceleração'};
+export default function Rooms(){
+ const [user,setUser]=useState<User|null>(null),[rooms,setRooms]=useState<Room[]>([]),[error,setError]=useState(''),[busy,setBusy]=useState(''),[notice,setNotice]=useState('');
+ useEffect(()=>{try{return onAuthStateChanged(createFirebaseClient().auth,setUser)}catch{setError('Não foi possível iniciar a autenticação')}},[]);
+ async function request(method:'GET'|'POST',body?:object){if(!user)throw Error('Faça login para acessar as salas');const token=await user.getIdToken();const res=await fetch('/api/live-rooms',{method,headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store'});const data=await res.json();if(!res.ok)throw Error(data.error??'Falha na operação');return data}
+ async function refresh(){if(!user)return;try{const data=await request('GET');setRooms(data.rooms??[]);setError('')}catch(e){setError(e instanceof Error?e.message:'Erro ao consultar')}}
+ useEffect(()=>{if(user)void refresh()},[user]);
+ async function join(room:string,id:string){setBusy(id);setError('');setNotice('');try{const data=await request('POST',{room,id});const tab=window.open(data.url,'_blank','noopener,noreferrer');if(!tab)setNotice('O navegador bloqueou a nova aba. Autorize pop-ups e tente novamente.')}catch(e){setError(e instanceof Error?e.message:'Não foi possível entrar')}finally{setBusy('')}}
+ return <main style={{maxWidth:1180,margin:'0 auto',padding:'32px 20px',fontFamily:'system-ui',color:'#17243c'}}><a href="/">← Início</a><h1>Salas virtuais · HUB Digital Cambuí</h1><p>Participe de lives, reuniões, workshops, treinamentos, incubação e aceleração. O acesso é liberado 15 minutos antes do início, mediante autenticação.</p>{!user&&<p><a href="/login">Entrar na plataforma</a> para consultar a programação.</p>}{error&&<p role="alert" style={{color:'#a32a3b'}}>{error}</p>}{notice&&<p role="status">{notice}</p>}<button onClick={()=>void refresh()} disabled={!user}>Atualizar programação</button><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:18,marginTop:22}}>{(rooms.length?rooms:[1,2,3,4].map(n=>({id:'sala-'+n,name:'Sala '+n,sessions:[]}))).map(room=><section key={room.id} style={{border:'1px solid #d4deeb',borderRadius:14,padding:20}}><h2>{room.name}</h2>{room.sessions.length===0?<p>Sem atividades programadas.</p>:room.sessions.map(s=><article key={s.id} style={{borderTop:'1px solid #e0e6ef',padding:'14px 0'}}><strong>{s.title}</strong><p>{kinds[s.kind]??s.kind}</p><p>{new Date(s.start).toLocaleString('pt-BR')} — {new Date(s.end).toLocaleString('pt-BR')}</p><button disabled={!s.joinable||busy===s.id} onClick={()=>void join(room.id,s.id)}>{busy===s.id?'Abrindo...':s.joinable?'Entrar na sala':'Aguardando horário de abertura'}</button></article>)}</section>)}</div></main>
+}
