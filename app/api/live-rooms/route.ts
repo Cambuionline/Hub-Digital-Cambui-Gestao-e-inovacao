@@ -23,6 +23,7 @@ export async function POST(req:NextRequest){
   const db=adminDb(),snap=await db.collection('hub_live_rooms').doc(body.room!).get();
   const slot=((snap.get('sessions')??[]) as Slot[]).find(s=>s.id===body.id&&s.status==='scheduled');
   if(!slot)return reply({error:'Atividade indisponível'},404);
+  if(typeof slot.url!=='string'||!slot.url.startsWith('https://'))return reply({error:'O gestor ainda não configurou o link da transmissão'},409);
   const enrollment=await db.collection('hub_live_registrations').doc(body.id+'_'+member.uid).get();if(!enrollment.exists||enrollment.get('status')!=='registered')return reply({error:'Inscrição necessária para acessar esta atividade'},403);
   const now=Date.now();if(now<Date.parse(slot.start)-15*60000||now>=Date.parse(slot.end))return reply({error:'A sala abre 15 minutos antes do início e fecha ao final da atividade'},403);
   // The link is only disclosed to authenticated members during the allowed time window.
