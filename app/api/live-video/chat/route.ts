@@ -26,7 +26,8 @@ export async function GET(req:NextRequest){
   const {room,id,valid}=params(req);if(!valid)return reply({error:'Sala inválida'},400);
   const auth=await authorize(req,room,id);if('error'in auth)return reply({error:auth.error},auth.status);
   const snap=await auth.db.collection('hub_live_sessions').doc(id).collection('chat').orderBy('createdAt','desc').limit(60).get();
-  return reply({messages:snap.docs.map(d=>({id:d.id,text:d.get('hidden')?'Mensagem removida pela moderação':String(d.get('text')??''),author:d.get('authorRole')==='manager'?'Gestor':String(d.get('authorName')??'Participante'),manager:d.get('authorRole')==='manager',hidden:!!d.get('hidden'),createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null,uid:auth.manager?String(d.get('uid')??''):undefined,pinned:!!d.get('pinned')})).reverse(),canModerate:auth.manager,chatLocked:!!auth.session.get('chatLocked'),blocked:auth.manager?[]:!!(await auth.session.ref.collection('chat_blocked').doc(auth.member.uid).get()).exists});
+  const blockedUsers=auth.manager?(await auth.session.ref.collection('chat_blocked').limit(100).get()).docs.map(d=>d.id):[];
+  return reply({messages:snap.docs.map(d=>({id:d.id,text:d.get('hidden')?'Mensagem removida pela moderação':String(d.get('text')??''),author:d.get('authorRole')==='manager'?'Gestor':String(d.get('authorName')??'Participante'),manager:d.get('authorRole')==='manager',hidden:!!d.get('hidden'),createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null,uid:auth.manager?String(d.get('uid')??''):undefined,pinned:!!d.get('pinned')})).reverse(),canModerate:auth.manager,chatLocked:!!auth.session.get('chatLocked'),blockedUsers,blocked:auth.manager?false:!!(await auth.session.ref.collection('chat_blocked').doc(auth.member.uid).get()).exists});
  }catch(e){console.error('live chat GET',e);return reply({error:'Falha ao consultar chat'},503)}
 }
 export async function POST(req:NextRequest){
