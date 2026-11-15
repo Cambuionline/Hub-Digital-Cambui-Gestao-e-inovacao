@@ -1,6 +1,7 @@
 import {NextRequest,NextResponse} from 'next/server';
 import {requireSuperadmin} from '@/lib/admin-guard';
 import {adminDb} from '@/lib/firestore-admin';
+import {RoomServiceClient} from 'livekit-server-sdk';
 export const runtime='nodejs';
 export async function GET(req:NextRequest){
  try{
@@ -17,11 +18,14 @@ export async function GET(req:NextRequest){
    blocked.count().get(),
    chat.orderBy('createdAt','desc').limit(100).get()
   ]);
+  let audience:{status:'available'|'unavailable'|'error';connected:number|null;presenters:number|null;viewers:number|null;checkedAt:string|null}={status:'unavailable',connected:null,presenters:null,viewers:null,checkedAt:null};
+  const liveUrl=process.env.LIVEKIT_URL??'',liveKey=process.env.LIVEKIT_API_KEY??'',liveSecret=process.env.LIVEKIT_API_SECRET??'';
+  if(liveUrl&&liveKey&&liveSecret){try{const httpUrl=liveUrl.replace(/^wss:/,'https:').replace(/^ws:/,'http:');const client=new RoomServiceClient(httpUrl,liveKey,liveSecret);const users=await client.listParticipants('hub-'+room+'-'+id);const presenters=users.filter(u=>u.permission?.canPublish).length;audience={status:'available',connected:users.length,presenters,viewers:users.length-presenters,checkedAt:new Date().toISOString()}}catch(e){console.error('LiveKit audience query failed',e);audience={status:'error',connected:null,presenters:null,viewers:null,checkedAt:new Date().toISOString()}}}
   const authors=new Set(latest.docs.filter(d=>!d.get('hidden')).map(d=>String(d.get('uid')??'')).filter(Boolean));
   return NextResponse.json({
    session:{id,room,title:String(session.get('title')??''),start:String(session.get('start')??''),end:String(session.get('end')??''),chatLocked:!!session.get('chatLocked')},
    metrics:{messagesTotal:total.data().count,messagesHidden:hidden.data().count,messagesPinned:pinned.data().count,usersRestricted:restricted.data().count,uniqueAuthorsInLast100:authors.size},
-   note:'Autores únicos calculados somente nas 100 mensagens mais recentes. Este painel não representa audiência conectada ao vídeo.'
+   audience,note:'Autores únicos calculados somente nas 100 mensagens mais recentes. A audiência ao vivo vem diretamente do LiveKit quando disponível.'
   },{headers:{'Cache-Control':'no-store'}});
  }catch(e){console.error('live metrics',e);return NextResponse.json({error:'Não foi possível carregar indicadores da transmissão'},{status:503})}
 }
