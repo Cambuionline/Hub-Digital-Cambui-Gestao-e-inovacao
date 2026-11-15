@@ -25,7 +25,7 @@ export async function POST(req:NextRequest){
   if(!/^wss:\/\/[^\s]+$/.test(host)||!key||!secret)return reply({error:'Vídeo nativo aguardando configuração do provedor LiveKit'},503);
   const roomName='hub-'+body.room+'-'+session.id;
   const token=new AccessToken(key,secret,{identity:member.uid,name:manager?'Gestor':member.email??'Participante',ttl:'30m'});
-  token.addGrant({roomJoin:true,room:roomName,canPublish:!!manager,canPublishData:true,canSubscribe:true});
+  token.addGrant({roomJoin:true,room:roomName,canPublish:!!manager,canPublishData:!!manager,canSubscribe:true});
   return reply({serverUrl:host,token:await token.toJwt(),roomName,role:manager?'presenter':'viewer',title:String(session.get('title')??'Atividade')});
  }catch(e){console.error('video token issue',e);return reply({error:'Não foi possível autorizar a transmissão'},503)}
 }
