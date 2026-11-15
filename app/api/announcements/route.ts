@@ -5,7 +5,7 @@ import {adminDb} from '@/lib/firestore-admin';
 import {requireMember} from '@/lib/member-guard';
 import {requireSuperadmin} from '@/lib/admin-guard';
 export const runtime='nodejs';
-const kinds=['event','course','opportunity'] as const;
+const kinds=['event','course','opportunity','workshop','mentoring','incubation','acceleration','meeting','consulting'] as const;
 type Kind=typeof kinds[number];
 function clean(value:unknown,max:number){return typeof value==='string'?value.trim().slice(0,max):''}
 export async function GET(req:NextRequest){
