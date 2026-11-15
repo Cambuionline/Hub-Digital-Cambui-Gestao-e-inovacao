@@ -26,26 +26,28 @@ export async function GET(req:NextRequest){
   const {room,id,valid}=params(req);if(!valid)return reply({error:'Sala inválida'},400);
   const auth=await authorize(req,room,id);if('error'in auth)return reply({error:auth.error},auth.status);
   const snap=await auth.db.collection('hub_live_sessions').doc(id).collection('chat').orderBy('createdAt','desc').limit(60).get();
-  return reply({messages:snap.docs.map(d=>({id:d.id,text:d.get('hidden')?'Mensagem removida pela moderação':String(d.get('text')??''),author:d.get('authorRole')==='manager'?'Gestor':String(d.get('authorName')??'Participante'),manager:d.get('authorRole')==='manager',hidden:!!d.get('hidden'),createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null})).reverse(),canModerate:auth.manager,chatLocked:!!auth.session.get('chatLocked')});
+  return reply({messages:snap.docs.map(d=>({id:d.id,text:d.get('hidden')?'Mensagem removida pela moderação':String(d.get('text')??''),author:d.get('authorRole')==='manager'?'Gestor':String(d.get('authorName')??'Participante'),manager:d.get('authorRole')==='manager',hidden:!!d.get('hidden'),createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null,uid:auth.manager?String(d.get('uid')??''):undefined,pinned:!!d.get('pinned')})).reverse(),canModerate:auth.manager,chatLocked:!!auth.session.get('chatLocked'),blocked:auth.manager?[]:!!(await auth.session.ref.collection('chat_blocked').doc(auth.member.uid).get()).exists});
  }catch(e){console.error('live chat GET',e);return reply({error:'Falha ao consultar chat'},503)}
 }
 export async function POST(req:NextRequest){
  try{
   const {room,id,valid}=params(req);if(!valid)return reply({error:'Sala inválida'},400);
   const auth=await authorize(req,room,id);if('error'in auth)return reply({error:auth.error},auth.status);
+  if(!auth.manager&&(await auth.session.ref.collection('chat_blocked').doc(auth.member.uid).get()).exists)return reply({error:'Seu envio de mensagens foi restringido pelo gestor'},403);
   if(!auth.manager&&auth.session.get('chatLocked'))return reply({error:'O gestor pausou temporariamente o chat'},423);
   const body=await req.json() as {text?:unknown};const text=typeof body.text==='string'?body.text.trim():'';
   if(text.length<1||text.length>500)return reply({error:'Mensagem deve conter entre 1 e 500 caracteres'},400);
   const sessionRef=auth.db.collection('hub_live_sessions').doc(id),rateRef=sessionRef.collection('chat_rate').doc(auth.member.uid),messageRef=sessionRef.collection('chat').doc();
   await auth.db.runTransaction(async tx=>{
    const sessionState=await tx.get(sessionRef);if(!auth.manager&&sessionState.get('chatLocked'))throw Error('CHAT_LOCKED');
+   const blocked=await tx.get(sessionRef.collection('chat_blocked').doc(auth.member.uid));if(!auth.manager&&blocked.exists)throw Error('USER_BLOCKED');
    const rate=await tx.get(rateRef);const last=rate.get('lastSentAt') as Timestamp|undefined;
    if(last&&Date.now()-last.toMillis()<3000)throw Error('RATE_LIMIT');
    tx.set(rateRef,{lastSentAt:Timestamp.now()});
    tx.create(messageRef,{text,uid:auth.member.uid,authorName:auth.manager?'Gestor':auth.member.email?.split('@')[0]??'Participante',authorRole:auth.manager?'manager':'member',hidden:false,createdAt:FieldValue.serverTimestamp()});
   });
   return reply({ok:true},201);
- }catch(e){if(e instanceof Error&&e.message==='CHAT_LOCKED')return reply({error:'O gestor pausou temporariamente o chat'},423);if(e instanceof Error&&e.message==='RATE_LIMIT')return reply({error:'Aguarde 3 segundos antes de enviar outra mensagem'},429);console.error('live chat POST',e);return reply({error:'Não foi possível enviar a mensagem'},503)}
+ }catch(e){if(e instanceof Error&&e.message==='USER_BLOCKED')return reply({error:'Seu envio de mensagens foi restringido pelo gestor'},403);if(e instanceof Error&&e.message==='CHAT_LOCKED')return reply({error:'O gestor pausou temporariamente o chat'},423);if(e instanceof Error&&e.message==='RATE_LIMIT')return reply({error:'Aguarde 3 segundos antes de enviar outra mensagem'},429);console.error('live chat POST',e);return reply({error:'Não foi possível enviar a mensagem'},503)}
 }
 export async function DELETE(req:NextRequest){
  try{
@@ -71,4 +73,29 @@ export async function PATCH(req:NextRequest){
   await auth.session.ref.update({chatLocked:body.locked,chatLockedBy:auth.member.uid,chatLockedAt:FieldValue.serverTimestamp()});
   return reply({ok:true,chatLocked:body.locked});
  }catch(e){console.error('live chat PATCH',e);return reply({error:'Falha ao atualizar estado do chat'},503)}
+}
+
+export async function PUT(req:NextRequest){
+ try{
+  const {room,id,valid}=params(req);if(!valid)return reply({error:'Sala inválida'},400);
+  const auth=await authorize(req,room,id);if('error'in auth)return reply({error:auth.error},auth.status);
+  if(!auth.manager)return reply({error:'Ação exclusiva do gestor'},403);
+  const body=await req.json() as {action?:string;messageId?:string;uid?:string;blocked?:boolean;pinned?:boolean};
+  const sessionRef=auth.db.collection('hub_live_sessions').doc(id);
+  if(body.action==='pin'){
+   if(!/^[A-Za-z0-9_-]{1,150}$/.test(body.messageId??'')||typeof body.pinned!=='boolean')return reply({error:'Dados inválidos'},400);
+   const ref=sessionRef.collection('chat').doc(body.messageId!);
+   const snap=await ref.get();if(!snap.exists||snap.get('hidden'))return reply({error:'Mensagem indisponível'},404);
+   await ref.update({pinned:body.pinned,pinnedBy:auth.member.uid,pinnedAt:FieldValue.serverTimestamp()});
+   return reply({ok:true});
+  }
+  if(body.action==='block'){
+   if(!/^[A-Za-z0-9_-]{1,150}$/.test(body.uid??'')||typeof body.blocked!=='boolean'||body.uid===auth.member.uid)return reply({error:'Dados inválidos'},400);
+   const ref=sessionRef.collection('chat_blocked').doc(body.uid!);
+   if(body.blocked)await ref.set({blockedAt:FieldValue.serverTimestamp(),blockedBy:auth.member.uid});
+   else await ref.delete();
+   return reply({ok:true});
+  }
+  return reply({error:'Ação inválida'},400);
+ }catch(e){console.error('live chat PUT',e);return reply({error:'Falha na moderação'},503)}
 }
