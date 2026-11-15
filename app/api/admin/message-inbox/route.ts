@@ -25,5 +25,27 @@ export async function GET(req:NextRequest){
    else if(!m.readAt)previous.unread++;
   }
   return reply({unread:messages.filter(m=>!m.readAt).length,unreadGlobal:Math.max(0,incomingSnapshot.data().count-readSnapshot.data().count),conversations:[...latest.values()],nextCursor,hasMore:!!nextCursor,partial:!!nextCursor,totalStored:totalSnapshot.data().count,pageSize:PAGE_SIZE,returnedMessages:messages.length});
- }catch(e){console.error('admin inbox pagination failed',e);return reply({error:'Não foi possível consultar mensagens'},503)}
+ }catch(e){
+  console.error('admin inbox indexed query failed; attempting single-field fallback',e);
+  try{
+   const admin=await requireSuperadmin(req);if(!admin)return reply({error:'Acesso restrito'},403);
+   const db=adminDb(),cursor=req.nextUrl.searchParams.get('cursor');
+   if(cursor&&(cursor.length>150||!/^[A-Za-z0-9_-]+$/.test(cursor)))return reply({error:'Cursor inválido'},400);
+   // A single-field adminUid query needs no composite index. Paginate the
+   // complete manager message stream and filter incoming messages server-side.
+   let query=db.collection('hub_admin_messages').where('adminUid','==',admin.uid).orderBy('__name__').limit(501);
+   if(cursor){
+    const cursorDoc=await db.collection('hub_admin_messages').doc(cursor).get();
+    if(!cursorDoc.exists||cursorDoc.get('adminUid')!==admin.uid)return reply({error:'Cursor inválido'},400);
+    query=query.startAfter(cursorDoc);
+   }
+   const snap=await query.get(),docs=snap.docs.slice(0,500);
+   const incoming=docs.filter(d=>d.get('direction')==='member_to_admin').map(d=>({uid:String(d.get('recipientUid')??d.get('senderUid')??''),lastText:String(d.get('text')??''),lastAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null,readAt:d.get('readAt')}));
+   incoming.sort((a,b)=>(b.lastAt??'').localeCompare(a.lastAt??''));
+   const conversations=new Map<string,{uid:string;lastText:string;lastAt:string|null;unread:number}>();
+   for(const msg of incoming){if(!msg.uid)continue;const existing=conversations.get(msg.uid);if(!existing)conversations.set(msg.uid,{uid:msg.uid,lastText:msg.lastText,lastAt:msg.lastAt,unread:msg.readAt?0:1});else if(!msg.readAt)existing.unread++}
+   const nextCursor=snap.docs.length>500?docs[docs.length-1].id:null;
+   return reply({conversations:[...conversations.values()],unread:incoming.filter(m=>!m.readAt).length,unreadGlobal:null,totalStored:null,nextCursor,hasMore:!!nextCursor,partial:!!nextCursor,degraded:true,warning:'Consulta em modo de compatibilidade. Os índices compostos do Firestore ainda precisam ser ativados para totais globais e ordenação completa.'});
+  }catch(fallbackError){console.error('admin inbox fallback failed',fallbackError);return reply({error:'Não foi possível consultar mensagens. Verifique os índices do Firestore e os logs da API.'},503)}
+ }
 }
