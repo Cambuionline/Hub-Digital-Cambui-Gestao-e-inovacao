@@ -1,1 +1,37 @@
-{"indexes":[],"fieldOverrides":[]}
+{
+  "indexes": [
+    {
+      "collectionGroup": "hub_admin_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "adminUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "hub_admin_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "adminUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "direction",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "readAt",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
