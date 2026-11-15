@@ -26,24 +26,26 @@ export async function GET(req:NextRequest){
   const {room,id,valid}=params(req);if(!valid)return reply({error:'Sala inválida'},400);
   const auth=await authorize(req,room,id);if('error'in auth)return reply({error:auth.error},auth.status);
   const snap=await auth.db.collection('hub_live_sessions').doc(id).collection('chat').orderBy('createdAt','desc').limit(60).get();
-  return reply({messages:snap.docs.map(d=>({id:d.id,text:d.get('hidden')?'Mensagem removida pela moderação':String(d.get('text')??''),author:d.get('authorRole')==='manager'?'Gestor':String(d.get('authorName')??'Participante'),manager:d.get('authorRole')==='manager',hidden:!!d.get('hidden'),createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null})).reverse(),canModerate:auth.manager});
+  return reply({messages:snap.docs.map(d=>({id:d.id,text:d.get('hidden')?'Mensagem removida pela moderação':String(d.get('text')??''),author:d.get('authorRole')==='manager'?'Gestor':String(d.get('authorName')??'Participante'),manager:d.get('authorRole')==='manager',hidden:!!d.get('hidden'),createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null})).reverse(),canModerate:auth.manager,chatLocked:!!auth.session.get('chatLocked')});
  }catch(e){console.error('live chat GET',e);return reply({error:'Falha ao consultar chat'},503)}
 }
 export async function POST(req:NextRequest){
  try{
   const {room,id,valid}=params(req);if(!valid)return reply({error:'Sala inválida'},400);
   const auth=await authorize(req,room,id);if('error'in auth)return reply({error:auth.error},auth.status);
+  if(!auth.manager&&auth.session.get('chatLocked'))return reply({error:'O gestor pausou temporariamente o chat'},423);
   const body=await req.json() as {text?:unknown};const text=typeof body.text==='string'?body.text.trim():'';
   if(text.length<1||text.length>500)return reply({error:'Mensagem deve conter entre 1 e 500 caracteres'},400);
   const sessionRef=auth.db.collection('hub_live_sessions').doc(id),rateRef=sessionRef.collection('chat_rate').doc(auth.member.uid),messageRef=sessionRef.collection('chat').doc();
   await auth.db.runTransaction(async tx=>{
+   const sessionState=await tx.get(sessionRef);if(!auth.manager&&sessionState.get('chatLocked'))throw Error('CHAT_LOCKED');
    const rate=await tx.get(rateRef);const last=rate.get('lastSentAt') as Timestamp|undefined;
    if(last&&Date.now()-last.toMillis()<3000)throw Error('RATE_LIMIT');
    tx.set(rateRef,{lastSentAt:Timestamp.now()});
    tx.create(messageRef,{text,uid:auth.member.uid,authorName:auth.manager?'Gestor':auth.member.email?.split('@')[0]??'Participante',authorRole:auth.manager?'manager':'member',hidden:false,createdAt:FieldValue.serverTimestamp()});
   });
   return reply({ok:true},201);
- }catch(e){if(e instanceof Error&&e.message==='RATE_LIMIT')return reply({error:'Aguarde 3 segundos antes de enviar outra mensagem'},429);console.error('live chat POST',e);return reply({error:'Não foi possível enviar a mensagem'},503)}
+ }catch(e){if(e instanceof Error&&e.message==='CHAT_LOCKED')return reply({error:'O gestor pausou temporariamente o chat'},423);if(e instanceof Error&&e.message==='RATE_LIMIT')return reply({error:'Aguarde 3 segundos antes de enviar outra mensagem'},429);console.error('live chat POST',e);return reply({error:'Não foi possível enviar a mensagem'},503)}
 }
 export async function DELETE(req:NextRequest){
  try{
@@ -57,4 +59,16 @@ export async function DELETE(req:NextRequest){
   await ref.update({hidden:true,text:'',moderatedAt:FieldValue.serverTimestamp(),moderatedBy:auth.member.uid});
   return reply({ok:true});
  }catch(e){console.error('live chat DELETE',e);return reply({error:'Falha ao moderar mensagem'},503)}
+}
+
+export async function PATCH(req:NextRequest){
+ try{
+  const {room,id,valid}=params(req);if(!valid)return reply({error:'Sala inválida'},400);
+  const auth=await authorize(req,room,id);if('error'in auth)return reply({error:auth.error},auth.status);
+  if(!auth.manager)return reply({error:'Ação exclusiva do gestor'},403);
+  const body=await req.json() as {locked?:unknown};
+  if(typeof body.locked!=='boolean')return reply({error:'Estado inválido'},400);
+  await auth.session.ref.update({chatLocked:body.locked,chatLockedBy:auth.member.uid,chatLockedAt:FieldValue.serverTimestamp()});
+  return reply({ok:true,chatLocked:body.locked});
+ }catch(e){console.error('live chat PATCH',e);return reply({error:'Falha ao atualizar estado do chat'},503)}
 }
