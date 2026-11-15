@@ -13,7 +13,7 @@ export async function GET(req:NextRequest){
  const member=await requireMember(req);
  if(!member)return NextResponse.json({error:'Autenticação necessária'},{status:401});
  const snap=await adminDb().collection('hub_announcements').where('status','==','published').limit(100).get();
- const items=snap.docs.map(d=>({id:d.id,kind:d.get('kind') as Kind,title:d.get('title')??'',description:d.get('description')??'',href:d.get('href')??'',startDate:d.get('startDate')??null,endDate:d.get('endDate')??null,deadline:d.get('deadline')??null,capacity:d.get('capacity')??null,registeredCount:d.get('registeredCount')??0,waitlistCount:d.get('waitlistCount')??0,createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null})).sort((a,b)=>(b.createdAt??'').localeCompare(a.createdAt??''));
+ const items=snap.docs.map(d=>({id:d.id,kind:d.get('kind') as Kind,title:d.get('title')??'',description:d.get('description')??'',href:d.get('href')??'',room:d.get('room')??null,startAt:d.get('startAt')??null,endAt:d.get('endAt')??null,startDate:d.get('startDate')??null,endDate:d.get('endDate')??null,deadline:d.get('deadline')??null,capacity:d.get('capacity')??null,registeredCount:d.get('registeredCount')??0,waitlistCount:d.get('waitlistCount')??0,createdAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null})).sort((a,b)=>(b.createdAt??'').localeCompare(a.createdAt??''));
  return NextResponse.json({items},{headers:{'Cache-Control':'no-store'}});
  }catch{return NextResponse.json({error:'Falha ao consultar publicações'},{status:503})}
 }
