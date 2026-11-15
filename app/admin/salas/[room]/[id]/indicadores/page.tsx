@@ -1,0 +1,16 @@
+'use client';
+import {useEffect,useState} from 'react';
+import {onAuthStateChanged,type User} from 'firebase/auth';
+import {useParams} from 'next/navigation';
+import Link from 'next/link';
+import {createFirebaseClient} from '@/lib/firebase';
+type Metrics={session:{title:string;room:string;chatLocked:boolean};metrics:{messagesTotal:number;messagesHidden:number;messagesPinned:number;usersRestricted:number;uniqueAuthorsInLast100:number};note:string};
+export default function LiveMetrics(){
+ const params=useParams(),room=String(params.room??''),id=String(params.id??'');
+ const [user,setUser]=useState<User|null>(null),[data,setData]=useState<Metrics|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false);
+ useEffect(()=>{try{return onAuthStateChanged(createFirebaseClient().auth,setUser)}catch{setError('Autenticação indisponível')}},[]);
+ async function load(){if(!user)return;setLoading(true);setError('');try{const token=await user.getIdToken();const res=await fetch('/api/admin/live-video-metrics?room='+encodeURIComponent(room)+'&id='+encodeURIComponent(id),{headers:{Authorization:'Bearer '+token},cache:'no-store'});const json=await res.json();if(!res.ok)throw Error(json.error??'Falha ao consultar indicadores');setData(json)}catch(e){setError(e instanceof Error?e.message:'Falha ao consultar indicadores')}finally{setLoading(false)}}
+ useEffect(()=>{if(user)void load()},[user,room,id]);
+ const items=data?[['Mensagens enviadas',data.metrics.messagesTotal],['Mensagens ocultadas',data.metrics.messagesHidden],['Mensagens destacadas',data.metrics.messagesPinned],['Usuários com envio restrito',data.metrics.usersRestricted],['Autores únicos nas últimas 100 mensagens',data.metrics.uniqueAuthorsInLast100]]:[];
+ return <main style={{maxWidth:1040,margin:'0 auto',padding:'32px 20px',fontFamily:'system-ui',color:'#182a49'}}><Link href="/admin/salas">← Gestão das salas</Link><h1>Indicadores da transmissão</h1><p>{data?.session.title??'Carregando atividade...'}</p>{error&&<p role="alert" style={{color:'#ad243b'}}>{error}</p>}<button disabled={!user||loading} onClick={()=>void load()}>{loading?'Atualizando...':'Atualizar indicadores'}</button><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:14,marginTop:20}}>{items.map(([label,value])=><article key={label} style={{border:'1px solid #dce3ed',borderRadius:12,padding:18,background:'#f8fafc'}}><strong style={{display:'block',fontSize:30}}>{value}</strong><span>{label}</span></article>)}</div>{data&&<><p style={{marginTop:20}}>Estado do chat: <strong>{data.session.chatLocked?'Pausado':'Aberto'}</strong></p><p style={{color:'#52617b'}}>{data.note}</p><Link href={'/salas/'+encodeURIComponent(room)+'/'+encodeURIComponent(id)}>Abrir estúdio da atividade</Link></>}</main>
+}
