@@ -52,3 +52,20 @@ export async function DELETE(req:NextRequest){
   return reply({ok:true});
  }catch(e){return reply({error:e instanceof Error&&e.message==='NOT_FOUND'?'Agendamento não encontrado':'Não foi possível cancelar'},e instanceof Error&&e.message==='NOT_FOUND'?404:503)}
 }
+
+export async function PATCH(req:NextRequest){
+ try{
+  const admin=await requireSuperadmin(req);if(!admin)return reply({error:'Acesso restrito'},403);
+  const body=await req.json() as {room?:string;id?:string;url?:string};
+  if(!rooms.some(x=>x===body.room)||!body.id||!/^[A-Za-z0-9_-]{1,150}$/.test(body.id)||typeof body.url!=='string'||!validUrl(body.url))return reply({error:'Sala, atividade ou link HTTPS inválido'},400);
+  const db=adminDb(),roomRef=db.collection('hub_live_rooms').doc(body.room!),sessionRef=db.collection('hub_live_sessions').doc(body.id);
+  await db.runTransaction(async tx=>{
+   const [roomDoc,sessionDoc]=await Promise.all([tx.get(roomRef),tx.get(sessionRef)]);
+   const slots=(roomDoc.get('sessions')??[]) as Slot[];
+   if(!sessionDoc.exists||sessionDoc.get('room')!==body.room||sessionDoc.get('status')!=='scheduled'||!slots.some(x=>x.id===body.id&&x.status==='scheduled'))throw Error('NOT_FOUND');
+   tx.update(roomRef,{sessions:slots.map(x=>x.id===body.id?{...x,url:body.url}:x),updatedAt:FieldValue.serverTimestamp(),updatedBy:admin.uid});
+   tx.update(sessionRef,{url:body.url,updatedAt:FieldValue.serverTimestamp(),updatedBy:admin.uid});
+  });
+  return reply({ok:true});
+ }catch(e){return reply({error:e instanceof Error&&e.message==='NOT_FOUND'?'Reserva não encontrada':'Não foi possível configurar o link'},e instanceof Error&&e.message==='NOT_FOUND'?404:503)}
+}
