@@ -12,7 +12,7 @@ export async function GET(req:NextRequest){
   const member=await requireMember(req);if(!member)return reply({error:'Acesso restrito'},403);
   const now=Date.now();
   const docs=await Promise.all(ids.map(id=>adminDb().collection('hub_live_rooms').doc(id).get()));
-  return reply({rooms:docs.map((doc,index)=>({id:ids[index],name:'Sala '+(index+1),sessions:((doc.get('sessions')??[]) as Slot[]).filter(s=>s.status==='scheduled'&&Date.parse(s.end)>now).map(s=>({id:s.id,title:s.title,kind:s.kind,start:s.start,end:s.end,joinable:Date.parse(s.start)-15*60000<=now&&now<Date.parse(s.end)})).sort((a,b)=>a.start.localeCompare(b.start))}))});
+  return reply({rooms:docs.map((doc,index)=>({id:ids[index],name:'Sala '+(index+1),sessions:((doc.get('sessions')??[]) as Slot[]).filter(s=>s.status==='scheduled'&&Date.parse(s.end)>now).map(s=>({id:s.id,title:s.title,kind:s.kind,start:s.start,end:s.end,announcementId:(s as Slot & {announcementId?:string}).announcementId??null,joinable:Date.parse(s.start)-15*60000<=now&&now<Date.parse(s.end)})).sort((a,b)=>a.start.localeCompare(b.start))}))});
  }catch{return reply({error:'Não foi possível consultar a programação'},503)}
 }
 export async function POST(req:NextRequest){
