@@ -1,0 +1,32 @@
+'use client';
+import {useEffect,useState} from 'react';
+import {onAuthStateChanged,type User} from 'firebase/auth';
+import {createFirebaseClient} from '@/lib/firebase';
+type Session={id:string;start:string;end:string;title:string;kind:string;url:string};
+type Room={id:string;name:string;sessions:Session[]};
+const kinds=[['live','Live'],['meeting','Reunião'],['workshop','Workshop'],['training','Treinamento'],['incubation','Incubação'],['acceleration','Aceleração']];
+export default function LiveRoomsAdmin(){
+ const [user,setUser]=useState<User|null>(null),[rooms,setRooms]=useState<Room[]>([]),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
+ const [room,setRoom]=useState('sala-1'),[title,setTitle]=useState(''),[kind,setKind]=useState('live'),[start,setStart]=useState(''),[end,setEnd]=useState(''),[url,setUrl]=useState('');
+ useEffect(()=>{const app=createFirebaseClient();if(!app){setError('Firebase Auth não configurado');return}return onAuthStateChanged(app.auth,setUser)},[]);
+ async function request(method:'GET'|'POST'|'DELETE',body?:object){if(!user)throw Error('Entre com uma conta de gestor para administrar as salas');const token=await user.getIdToken();const res=await fetch('/api/admin/live-rooms',{method,headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store'});const data=await res.json();if(!res.ok)throw Error(data.error??'Falha ao consultar as salas');return data}
+ async function refresh(){if(!user)return;try{const data=await request('GET');setRooms(data.rooms??[]);setError('')}catch(e){setError(e instanceof Error?e.message:'Falha ao carregar')}}
+ useEffect(()=>{if(user)void refresh()},[user]);
+ async function save(){setBusy(true);setError('');setNotice('');try{await request('POST',{room,title,kind,url,start:new Date(start).toISOString(),end:new Date(end).toISOString()});setNotice('Atividade agendada com sucesso.');setTitle('');setStart('');setEnd('');setUrl('');await refresh()}catch(e){setError(e instanceof Error?e.message:'Falha ao agendar')}finally{setBusy(false)}}
+ async function cancel(roomId:string,id:string){if(!window.confirm('Cancelar este agendamento?'))return;setBusy(true);try{await request('DELETE',{room:roomId,id});setNotice('Agendamento cancelado.');await refresh()}catch(e){setError(e instanceof Error?e.message:'Falha ao cancelar')}finally{setBusy(false)}}
+ return <main style={{maxWidth:1180,margin:'0 auto',padding:'32px 20px',fontFamily:'system-ui',color:'#17243c'}}>
+  <a href="/admin">← Voltar ao Painel Gestor</a><h1>Salas virtuais · HUB Digital Cambuí</h1><p>Quatro salas independentes para atividades simultâneas. Agende pelo horário local e forneça o link HTTPS da transmissão ou reunião. A transmissão é hospedada pelo serviço externo escolhido.</p>
+  {error&&<p role="alert" style={{color:'#9a2335'}}>{error}</p>}{notice&&<p role="status" style={{color:'#176b43'}}>{notice}</p>}
+  <section style={{padding:20,border:'1px solid #cdd7e5',borderRadius:14,marginBottom:24}}>
+   <h2>Agendar atividade</h2><div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:14}}>
+   <label>Sala<select value={room} onChange={e=>setRoom(e.target.value)} style={{display:'block',width:'100%',padding:10}}>{[1,2,3,4].map(n=><option key={n} value={'sala-'+n}>Sala {n}</option>)}</select></label>
+   <label>Tipo<select value={kind} onChange={e=>setKind(e.target.value)} style={{display:'block',width:'100%',padding:10}}>{kinds.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
+   <label>Título<input value={title} maxLength={120} onChange={e=>setTitle(e.target.value)} style={{display:'block',width:'100%',padding:10}} required/></label>
+   <label>Início<input type="datetime-local" value={start} onChange={e=>setStart(e.target.value)} style={{display:'block',width:'100%',padding:10}} required/></label>
+   <label>Fim<input type="datetime-local" value={end} onChange={e=>setEnd(e.target.value)} style={{display:'block',width:'100%',padding:10}} required/></label>
+   <label>Link HTTPS da transmissão<input type="url" placeholder="https://..." value={url} onChange={e=>setUrl(e.target.value)} style={{display:'block',width:'100%',padding:10}} required/></label>
+   </div><button disabled={busy||!user||!title.trim()||!start||!end||!url} onClick={()=>void save()} style={{marginTop:18,padding:'12px 20px',background:'#142e58',color:'white',border:0,borderRadius:8}}>{busy?'Salvando...':'Confirmar agendamento'}</button>
+  </section>
+  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))',gap:16}}>{(rooms.length?rooms:[1,2,3,4].map(n=>({id:'sala-'+n,name:'Sala '+n,sessions:[]}))).map(r=><section key={r.id} style={{border:'1px solid #cdd7e5',borderRadius:14,padding:18,minHeight:200}}><h2>{r.name}</h2><p>{r.sessions.length} atividade(s) agendada(s)</p>{r.sessions.length===0?<p>Sem atividades futuras.</p>:r.sessions.map(s=><article key={s.id} style={{borderTop:'1px solid #e2e7ee',padding:'12px 0'}}><strong>{s.title}</strong><p>{kinds.find(x=>x[0]===s.kind)?.[1]??s.kind}</p><p>{new Date(s.start).toLocaleString('pt-BR')} — {new Date(s.end).toLocaleString('pt-BR')}</p><a href={s.url} target="_blank" rel="noopener noreferrer">Abrir transmissão</a> <button disabled={busy} onClick={()=>void cancel(r.id,s.id)}>Cancelar</button></article>)}</section>)}</div>
+ </main>
+}
