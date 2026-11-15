@@ -8,7 +8,7 @@ const kinds=[['live','Live'],['meeting','Reunião'],['workshop','Workshop'],['tr
 export default function LiveRoomsAdmin(){
  const [user,setUser]=useState<User|null>(null),[rooms,setRooms]=useState<Room[]>([]),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
  const [room,setRoom]=useState('sala-1'),[title,setTitle]=useState(''),[kind,setKind]=useState('live'),[start,setStart]=useState(''),[end,setEnd]=useState(''),[url,setUrl]=useState('');
- useEffect(()=>{const app=createFirebaseClient();if(!app){setError('Firebase Auth não configurado');return}return onAuthStateChanged(app.auth,setUser)},[]);
+ useEffect(()=>{try{const app=createFirebaseClient();return onAuthStateChanged(app.auth,setUser)}catch{setError('Firebase Auth não configurado')}},[]);
  async function request(method:'GET'|'POST'|'DELETE',body?:object){if(!user)throw Error('Entre com uma conta de gestor para administrar as salas');const token=await user.getIdToken();const res=await fetch('/api/admin/live-rooms',{method,headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,cache:'no-store'});const data=await res.json();if(!res.ok)throw Error(data.error??'Falha ao consultar as salas');return data}
  async function refresh(){if(!user)return;try{const data=await request('GET');setRooms(data.rooms??[]);setError('')}catch(e){setError(e instanceof Error?e.message:'Falha ao carregar')}}
  useEffect(()=>{if(user)void refresh()},[user]);
