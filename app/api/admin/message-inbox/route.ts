@@ -31,21 +31,39 @@ export async function GET(req:NextRequest){
    const admin=await requireSuperadmin(req);if(!admin)return reply({error:'Acesso restrito'},403);
    const db=adminDb(),cursor=req.nextUrl.searchParams.get('cursor');
    if(cursor&&(cursor.length>150||!/^[A-Za-z0-9_-]+$/.test(cursor)))return reply({error:'Cursor inválido'},400);
-   // A single-field adminUid query needs no composite index. Paginate the
-   // complete manager message stream and filter incoming messages server-side.
-   let query=db.collection('hub_admin_messages').where('adminUid','==',admin.uid).orderBy('__name__').limit(501);
-   if(cursor){
-    const cursorDoc=await db.collection('hub_admin_messages').doc(cursor).get();
-    if(!cursorDoc.exists||cursorDoc.get('adminUid')!==admin.uid)return reply({error:'Cursor inválido'},400);
-    query=query.startAfter(cursorDoc);
+   // Single-field index fallback: scan bounded chunks until we collect incoming
+   // messages, instead of showing an empty inbox when outgoing messages dominate.
+   const MAX_SCAN=2000,CHUNK=250;
+   let scanned=0,position=cursor;
+   const incoming:{uid:string;lastText:string;lastAt:string|null;readAt:unknown}[]=[];
+   while(scanned<MAX_SCAN&&incoming.length<PAGE_SIZE){
+    let query=db.collection('hub_admin_messages').where('adminUid','==',admin.uid).orderBy('__name__').limit(CHUNK);
+    if(position){
+     const cursorDoc=await db.collection('hub_admin_messages').doc(position).get();
+     if(!cursorDoc.exists||cursorDoc.get('adminUid')!==admin.uid)return reply({error:'Cursor inválido'},400);
+     query=query.startAfter(cursorDoc);
+    }
+    const snap=await query.get();
+    if(snap.empty){position=null;break}
+    for(const doc of snap.docs){
+     position=doc.id;scanned++;
+     if(doc.get('direction')!=='member_to_admin')continue;
+     const uid=String(doc.get('recipientUid')??doc.get('senderUid')??'');
+     if(!uid)continue;
+     incoming.push({uid,lastText:String(doc.get('text')??''),lastAt:doc.get('createdAt')?.toDate?.()?.toISOString?.()??null,readAt:doc.get('readAt')});
+     if(incoming.length>=PAGE_SIZE)break;
+    }
+    if(snap.size<CHUNK){position=null;break}
    }
-   const snap=await query.get(),docs=snap.docs.slice(0,500);
-   const incoming=docs.filter(d=>d.get('direction')==='member_to_admin').map(d=>({uid:String(d.get('recipientUid')??d.get('senderUid')??''),lastText:String(d.get('text')??''),lastAt:d.get('createdAt')?.toDate?.()?.toISOString?.()??null,readAt:d.get('readAt')}));
    incoming.sort((a,b)=>(b.lastAt??'').localeCompare(a.lastAt??''));
    const conversations=new Map<string,{uid:string;lastText:string;lastAt:string|null;unread:number}>();
-   for(const msg of incoming){if(!msg.uid)continue;const existing=conversations.get(msg.uid);if(!existing)conversations.set(msg.uid,{uid:msg.uid,lastText:msg.lastText,lastAt:msg.lastAt,unread:msg.readAt?0:1});else if(!msg.readAt)existing.unread++}
-   const nextCursor=snap.docs.length>500?docs[docs.length-1].id:null;
-   return reply({conversations:[...conversations.values()],unread:incoming.filter(m=>!m.readAt).length,unreadGlobal:null,totalStored:null,nextCursor,hasMore:!!nextCursor,partial:!!nextCursor,degraded:true,warning:'Consulta em modo de compatibilidade. Os índices compostos do Firestore ainda precisam ser ativados para totais globais e ordenação completa.'});
+   for(const msg of incoming){
+    const existing=conversations.get(msg.uid);
+    if(!existing)conversations.set(msg.uid,{uid:msg.uid,lastText:msg.lastText,lastAt:msg.lastAt,unread:msg.readAt?0:1});
+    else if(!msg.readAt)existing.unread++;
+   }
+   const nextCursor=position;
+   return reply({conversations:[...conversations.values()],unread:incoming.filter(m=>!m.readAt).length,unreadGlobal:null,totalStored:null,nextCursor,hasMore:!!nextCursor,partial:!!nextCursor,degraded:true,scannedMessages:scanned,warning:'Modo de compatibilidade: foram examinadas até 2.000 mensagens por consulta. Contagem global e ordem completa exigem índices compostos do Firestore.'});
   }catch(fallbackError){console.error('admin inbox fallback failed',fallbackError);return reply({error:'Não foi possível consultar mensagens. Verifique os índices do Firestore e os logs da API.'},503)}
  }
 }
