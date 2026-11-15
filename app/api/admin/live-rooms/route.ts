@@ -22,7 +22,7 @@ export async function POST(req:NextRequest){
   const start=String(body.start??''),end=String(body.end??'');
   const capacity=body.capacity===null||body.capacity===undefined||body.capacity===''?null:Number(body.capacity);
   const startMs=Date.parse(start),endMs=Date.parse(end);
-  if((capacity!==null&&(!Number.isInteger(capacity)||capacity<1||capacity>10000))||!rooms.some(x=>x===room)||title.length<5||title.length>120||!['live','meeting','workshop','training','incubation','acceleration'].includes(kind)||!validUrl(url)||!Number.isFinite(startMs)||!Number.isFinite(endMs)||!/^\d{4}-\d{2}-\d{2}T/.test(start)||!/^\d{4}-\d{2}-\d{2}T/.test(end)||startMs<Date.now()+60000||endMs<=startMs||endMs-startMs>8*3600000)return reply({error:'Verifique sala, título, link HTTPS e período (até 8 horas, início futuro)'},400);
+  if((capacity!==null&&(!Number.isInteger(capacity)||capacity<1||capacity>10000))||!rooms.some(x=>x===room)||title.length<5||title.length>120||!['live','meeting','workshop','training','incubation','acceleration','mentoring','consulting'].includes(kind)||(url!==''&&!validUrl(url))||!Number.isFinite(startMs)||!Number.isFinite(endMs)||!/^\d{4}-\d{2}-\d{2}T/.test(start)||!/^\d{4}-\d{2}-\d{2}T/.test(end)||startMs<Date.now()+60000||endMs<=startMs||endMs-startMs>8*3600000)return reply({error:'Verifique sala, título, link HTTPS (quando informado) e período (até 8 horas, início futuro)'},400);
   const db=adminDb(),ref=db.collection('hub_live_rooms').doc(room),id=db.collection('hub_live_sessions').doc().id;
   const slot:Slot={id,start:new Date(startMs).toISOString(),end:new Date(endMs).toISOString(),title,kind,url,capacity,status:'scheduled'};
   await db.runTransaction(async tx=>{
