@@ -22,11 +22,14 @@ export async function GET(req:NextRequest){
   const liveUrl=process.env.LIVEKIT_URL??'',liveKey=process.env.LIVEKIT_API_KEY??'',liveSecret=process.env.LIVEKIT_API_SECRET??'';
   if(liveUrl&&liveKey&&liveSecret){try{const httpUrl=liveUrl.replace(/^wss:/,'https:').replace(/^ws:/,'http:');const client=new RoomServiceClient(httpUrl,liveKey,liveSecret);const users=await client.listParticipants('hub-'+room+'-'+id);const presenters=users.filter(u=>u.permission?.canPublish).length;audience={status:'available',connected:users.length,presenters,viewers:users.length-presenters,checkedAt:new Date().toISOString()}}catch(e){console.error('LiveKit audience query failed',e);audience={status:'error',connected:null,presenters:null,viewers:null,checkedAt:new Date().toISOString()}}}
   const [attendanceSnap,verifiedSnap]=await Promise.all([session.ref.collection('attendance').count().get(),session.ref.collection('verified_attendance').count().get()]);
+  const verifiedRecords=await session.ref.collection('verified_attendance').limit(1000).get();
+  const completedSeconds=verifiedRecords.docs.reduce((sum,d)=>sum+Math.max(0,Number(d.get('totalConnectedSeconds')??0)),0);
+  const verifiedActive=verifiedRecords.docs.filter(d=>d.get('active')===true).length;
   const authors=new Set(latest.docs.filter(d=>!d.get('hidden')).map(d=>String(d.get('uid')??'')).filter(Boolean));
   return NextResponse.json({
    session:{id,room,title:String(session.get('title')??''),start:String(session.get('start')??''),end:String(session.get('end')??''),chatLocked:!!session.get('chatLocked')},
    metrics:{messagesTotal:total.data().count,messagesHidden:hidden.data().count,messagesPinned:pinned.data().count,usersRestricted:restricted.data().count,uniqueAuthorsInLast100:authors.size},
-   attendance:{uniqueBrowserConnections:attendanceSnap.data().count,verifiedLiveKitParticipants:verifiedSnap.data().count,source:'browser-client + livekit-webhook'},
+   attendance:{uniqueBrowserConnections:attendanceSnap.data().count,verifiedLiveKitParticipants:verifiedSnap.data().count,verifiedConnectedSeconds:completedSeconds,verifiedActiveRecords:verifiedActive,verifiedDurationTruncated:verifiedSnap.data().count>1000,source:'browser-client + livekit-webhook'},
    audience,note:'Autores únicos calculados somente nas 100 mensagens mais recentes. A audiência ao vivo vem diretamente do LiveKit quando disponível.'
   },{headers:{'Cache-Control':'no-store'}});
  }catch(e){console.error('live metrics',e);return NextResponse.json({error:'Não foi possível carregar indicadores da transmissão'},{status:503})}
