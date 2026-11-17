@@ -30,9 +30,13 @@ export async function POST(req:NextRequest){
    const [seen,attendance]=await Promise.all([tx.get(eventRef),tx.get(attendanceRef)]);
    if(seen.exists)return;
    const joined=event.event==='participant_joined';
+   const now=Date.now(),previousJoin=attendance.get('lastJoinedAt')?.toMillis?.() as number|undefined;
+   const previousSeconds=Number(attendance.get('totalConnectedSeconds')??0);
+   const active=!!attendance.get('active');
+   const elapsed=active&&previousJoin&&now>=previousJoin?Math.floor((now-previousJoin)/1000):0;
    tx.create(eventRef,{type:event.event,receivedAt:FieldValue.serverTimestamp(),uid:identity});
-   if(joined)tx.set(attendanceRef,{uid:identity,room,role:participant.permission?.canPublish?'presenter':'viewer',firstJoinedAt:attendance.exists?attendance.get('firstJoinedAt'):FieldValue.serverTimestamp(),lastJoinedAt:FieldValue.serverTimestamp(),lastLeftAt:null,joinCount:FieldValue.increment(1),source:'livekit-webhook'},{merge:true});
-   else if(attendance.exists)tx.update(attendanceRef,{lastLeftAt:FieldValue.serverTimestamp()});
+   if(joined)tx.set(attendanceRef,{uid:identity,room,role:participant.permission?.canPublish?'presenter':'viewer',firstJoinedAt:attendance.exists?attendance.get('firstJoinedAt'):FieldValue.serverTimestamp(),lastJoinedAt:FieldValue.serverTimestamp(),lastLeftAt:null,active:true,totalConnectedSeconds:previousSeconds+(active?elapsed:0),joinCount:FieldValue.increment(1),source:'livekit-webhook'},{merge:true});
+   else if(attendance.exists&&active)tx.update(attendanceRef,{lastLeftAt:FieldValue.serverTimestamp(),active:false,totalConnectedSeconds:previousSeconds+elapsed});
   });
   return json({ok:true});
  }catch(e){console.error('LiveKit webhook persistence failure',e);return json({error:'Falha ao registrar evento'},503)}
